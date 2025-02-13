@@ -10,6 +10,21 @@ via Point-based Representation</h2>
 - **[2024/03/01]** 📢Our paper is released in [Arxiv](https://arxiv.org/pdf/2401.10556.pdf), and camera ready version is updated. 
 - **[2024/01/16]** 🎊SymPoint is accepted by **ICLR 2024**.
 
+## Setup Instructions by Manjunadh
+```bash
+conda create -n spv1 python=3.8 -y
+conda activate spv1
+conda install -c nvidia cudatoolkit=11.1
+pip install torch==1.10.0+cu111 torchvision==0.11.0+cu111 -f https://download.pytorch.org/whl/torch_stable.html
+pip install gdown mmcv==0.2.14 svgpathtools==1.6.1 munch==2.5.0 tensorboard==2.12.0 tensorboardx==2.5.1
+python -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
+
+# compile pointops
+cd modules/pointops
+python setup.py install
+```
+
+
 
 
 ## 🔧Installation & Dataset
