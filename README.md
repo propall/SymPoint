@@ -11,6 +11,10 @@ via Point-based Representation</h2>
 - **[2024/01/16]** 🎊SymPoint is accepted by **ICLR 2024**.
 
 ## Setup Instructions by Manjunadh
+
+Instance used: "manjunadh-midtier-a100-80gb-cuda-11-3", Image: "Google, Deep Learning VM with CUDA 11.3, M126, Debian 11, Python 3.10. With CUDA 11.3 preinstalled."
+
+Note that the below instructions work on a system that has nvcc version 11.3 in base env but not on a system that has version 12.4
 ```bash
 conda create -n spv1 python=3.8 -y
 conda activate spv1
@@ -22,6 +26,17 @@ python -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
 # compile pointops
 cd modules/pointops
 python setup.py install
+
+# download dataset
+python download_data.py
+# 6965 train images, 3827 test images, 810 val images (use ```ls -l | wc -l``` to count no of files in directory location from terminal)
+
+# preprocess (convert train, val, testsets to json format data for training and testing.)
+python parse_svg.py --split train --data_dir ./dataset/train/train/svg_gt/
+python parse_svg.py --split val --data_dir ./dataset/val/val/svg_gt/
+python parse_svg.py --split test --data_dir ./dataset/test/test/svg_gt/
+
+
 ```
 
 
