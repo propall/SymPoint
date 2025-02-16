@@ -84,8 +84,8 @@ data:
 
 dataloader:
   train:
-    batch_size: 2
-    num_workers: 2
+    batch_size: 8 # Originally 2
+    num_workers: 4 # Originally 2
   test:
     batch_size: 1
     num_workers: 1
@@ -107,7 +107,7 @@ scheduler:
   lr_decay_epochs: [18,24]
 
 fp16: False
-epochs: 50
+epochs: 2 # Originally 50
 step_epoch: 30
 save_freq: 10
 pretrain: '' # We can load pretrain of ScanNetV2 or train from scratch

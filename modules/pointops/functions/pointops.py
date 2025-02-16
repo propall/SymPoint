@@ -259,7 +259,19 @@ def interpolation(xyz, new_xyz, feat, offset, new_offset, k=3):
     output: (n, c)
     """
     assert xyz.is_contiguous() and new_xyz.is_contiguous() and feat.is_contiguous()
+    
+    # Debug information
+    # print(f"Input shapes:")
+    # print(f"xyz: {xyz.shape}, new_xyz: {new_xyz.shape}, feat: {feat.shape}")
+    # print(f"offset: {offset}, new_offset: {new_offset}")
+    
     idx, dist = knnquery(k, xyz, new_xyz, offset, new_offset)  # (n, 3), (n, 3)
+    
+    # Safety check and clamp indices
+    max_idx = feat.size(0) - 1
+    # print(f"Index range before clamping - min: {idx.min()}, max: {idx.max()}, valid range: 0 to {max_idx}")
+    idx = torch.clamp(idx, 0, max_idx)
+    
     dist_recip = 1.0 / (dist + 1e-8)  # (n, 3)
     norm = torch.sum(dist_recip, dim=1, keepdim=True)
     weight = dist_recip / norm  # (n, 3)
