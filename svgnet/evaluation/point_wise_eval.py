@@ -4,6 +4,19 @@ import torch
 import torch.distributed as dist
 
 class PointWiseEval(object):
+    """Class for evaluating point-wise segmentation performance.
+    
+    This class computes confusion matrices and evaluates metrics such as accuracy (ACC) and 
+    mean Intersection over Union (mIoU) for semantic segmentation.
+    
+    Attributes:
+        ignore_label (int): Label to ignore in evaluation.
+        _num_classes (int): Number of semantic classes.
+        _conf_matrix (np.ndarray): Confusion matrix for evaluation.
+        _b_conf_matrix (np.ndarray): Confusion matrix for binary segmentation.
+        _class_names (list): Names of the semantic classes.
+        gpu_num (int): Number of GPUs used for distributed evaluation.
+    """
     def __init__(self, num_classes=35, ignore_label=35,gpu_num=1) -> None:
         self.ignore_label = ignore_label
         self._num_classes = num_classes
@@ -15,7 +28,12 @@ class PointWiseEval(object):
         self.gpu_num = gpu_num
         
     def update(self, pred_sem, gt_sem):
+        """Updates the confusion matrix with predictions and ground truth labels.
         
+        Args:
+            pred_sem (np.ndarray): Predicted semantic labels.
+            gt_sem (np.ndarray): Ground truth semantic labels.
+        """
         pos_inds = gt_sem != self.ignore_label
         pred = pred_sem[pos_inds]
         gt = gt_sem[pos_inds]
@@ -28,7 +46,14 @@ class PointWiseEval(object):
         
 
     def get_eval(self, logger):
+        """Computes and logs evaluation metrics.
         
+        Args:
+            logger (Logger): Logger for logging evaluation metrics.
+        
+        Returns:
+            tuple: Mean IoU (mIoU), Pixel accuracy (pACC)
+        """
         if self.gpu_num>1:
             t =  torch.from_numpy(self._conf_matrix).to("cuda")
             conf_matrix_list = [torch.full_like(t,0) for _ in range(self.gpu_num)]
@@ -65,6 +90,11 @@ class PointWiseEval(object):
         return miou, pACC
 
 class InstanceEval(object):
+    """Class for evaluating instance-wise segmentation performance.
+    
+    This class computes Precision, Recall, and IoU for instance segmentation 
+    based on detected object instances.
+    """
     def __init__(self, num_classes=35,
                  ignore_label=35,
                  gpu_num=8) -> None:
@@ -84,7 +114,13 @@ class InstanceEval(object):
         self.stuff_class = [30,31,32,33,34]
 
     def update(self, instances, target, lengths):
+        """Updates evaluation metrics based on detected instances and ground truth targets.
         
+        Args:
+            instances (list): List of detected instances.
+            target (dict): Dictionary containing ground truth labels and masks.
+            lengths (torch.Tensor): Length of each detected object instance.
+        """
         lengths = np.round( np.log(1 + lengths.cpu().numpy()) , 3)
         tgt_labels = target["labels"].cpu().numpy().tolist()
         tgt_masks = target["masks"].transpose(0,1).cpu().numpy()
@@ -112,8 +148,14 @@ class InstanceEval(object):
             if not flag: self.fn_classes[tgt_label] += 1
     
     def get_eval(self, logger):
-    
-
+        """Computes and logs instance segmentation evaluation metrics.
+        
+        Args:
+            logger (Logger): Logger for logging evaluation metrics.
+        
+        Returns:
+            tuple: Segmentation PQ, RQ, and SQ metrics.
+        """
         if self.gpu_num>1:
             _tensor = np.stack([self.tp_classes,
                                self.tp_classes_values,

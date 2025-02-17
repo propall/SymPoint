@@ -119,7 +119,7 @@ class SVGDataset(Dataset):
         instanceIds = instanceIds.astype(np.int64)
         label = np.concatenate([semanticIds[:,None],instanceIds[:,None]],axis=1)
         return coord, feat, label,lengths
-    
+
     def __getitem__(self, idx):
         
         data_idx = self.data_idx[idx % len(self.data_idx)]
@@ -130,6 +130,8 @@ class SVGDataset(Dataset):
             return self.transform_train(coord, feat, label)
         else:
             return self.transform_test(coord, feat, label,lengths)
+            # print(f"self.split is test: {len((self.transform_test(coord, feat, label, lengths), json_file))}")
+            # return (self.transform_test(coord, feat, label,lengths), json_file)
     
     def transform_train(self,coord, feat, label):
         

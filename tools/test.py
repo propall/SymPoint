@@ -73,6 +73,8 @@ def main():
             
             t2 = time.time()
             time_arr.append(t2 - t1)
+            
+            # Get semantic segmentation predictions
             sem_preds = torch.argmax(res["semantic_scores"],dim=1).cpu().numpy()
             sem_gts = res["semantic_labels"].cpu().numpy()
             sem_point_eval.update(sem_preds, sem_gts)
