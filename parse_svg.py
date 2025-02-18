@@ -24,20 +24,22 @@ def parse_args():
     return args
 
 def parse_svg(svg_file):
-    tree = ET.parse(svg_file)
-    root = tree.getroot()
-    ns = root.tag[:-3]
+    tree = ET.parse(svg_file) # Load the SVG as an XML tree
+    root = tree.getroot()     # Get the root <svg> element
+    ns = root.tag[:-3]        # Extract XML namespace
+    
+    # Extract viewBox info (it is present on first line of SVG and has leftmost point coordinates, width and height, similar to COCO format for bounding boxes)
     minx, miny, width, height = [int(float(x)) for x in root.attrib['viewBox'].split(' ')]
     
-    commands = []
-    args = [] # (x1,y1,x2,y2,x3,y3,x4,y4) 4points
-    lengths = []
-    semanticIds = []
-    instanceIds = []
-    strokes = []
+    commands = [] # Stores shape types (Line, Arc, circle, ellipse).
+    args = [] # Stores control points[they are the middle points in a curve, any coordinates in the path except the start and end points influence the curvature of path and are called control points] (x1,y1,x2,y2,x3,y3,x4,y4) 4points
+    lengths = [] # Stores shape lengths
+    semanticIds = [] # Store Semantic IDs (class labels)
+    instanceIds = [] # Store Instance IDs (unique instances)
+    strokes = [] # Stores stroke (outline) color of each shape, mapped to semantic ID.
     layerIds = []
-    widths = []
-    inst_infos = defaultdict(list)
+    widths = [] # Stores stroke width
+    inst_infos = defaultdict(list) # A dictionary where keys are tuples of (instanceId, semanticId) while values are  lists that store control points
     id = 0
     for g in root.iter(ns + 'g'):
         id +=1

@@ -19,7 +19,8 @@ def build_dataset(data_cfg, logger):
         raise ValueError(f"Unknown {data_type}")
 
 
-def build_dataloader(args,dataset, batch_size=1, num_workers=1, training=True, dist=False):
+def build_dataloader(args,dataset, batch_size=1, num_workers=1, training=True, dist=False, visualise=False):
+    # visualise is a param thats purely written for showing visual results during visualise.py, added by Manjunadh to seperate visualise.py from default test.py(no visualisation, only prints result metrics directly)
     shuffle = training
     sampler = DistributedSampler(dataset, shuffle=shuffle) if dist else None
     if sampler is not None:
@@ -36,7 +37,8 @@ def build_dataloader(args,dataset, batch_size=1, num_workers=1, training=True, d
             pin_memory=True,
             worker_init_fn=partial(worker_init_fn, seed=args.seed)
         )
-    else:
+    
+    else:       
         # assert batch_size == 1
         return DataLoader(
             dataset,

@@ -61,21 +61,31 @@ class SVGDataset(Dataset):
 
     def __init__(self, data_root, split,data_norm,aug, repeat=1, logger=None):
         
-        self.split = split
-        self.data_norm = data_norm
-        self.aug = aug
-        self.repeat = repeat
-        self.data_list = glob(osp.join(data_root,"*.json"))
+        self.split = split # train/test (used to define augmentations)
+        self.data_norm = data_norm # Method of normalising coordinates (mean/min)
+        self.aug = aug # Augmentation configuration
+        self.repeat = repeat # No. of times to repeat dataset for training stability
+        self.data_list = glob(osp.join(data_root,"*.json")) # Collects the json files created from svg files
         logger.info(f"Load {split} dataset: {len(self.data_list)} svg")
-        self.data_idx = np.arange(len(self.data_list))
+        self.data_idx = np.arange(len(self.data_list)) # Creates an array of indices corresponding to dataset
         
-        self.instance_queues = []
+        self.instance_queues = [] # Used for instance-level augmentations like CutMix
 
     def __len__(self):
+        """
+        Returns total no. of samples considering repeat
+        """
         return len(self.data_list)*self.repeat
     
+    # Having @staticmethod means load() doesnt have self and can be called without instance of SVGDataset
     @staticmethod
     def load(json_file,idx,min_points=2048):
+        """
+        Args:
+            json_file (str): Path to a JSON file containing SVG annotations
+            idx (int): Sample index (used for instance ID shifting to keep IDs unique).
+            min_points (int, default=2048): Minimum number of points in the output (zero-padding is applied if needed).
+        """
         data = json.load(open(json_file))
         args = np.array(data["args"]).reshape(-1,8)/ 140
         num = args.shape[0]
@@ -89,28 +99,29 @@ class SVGDataset(Dataset):
         #coord_x = 2 * coord_x - 1
         #coord_y = 2 * coord_y - 1
         
-        coord[:num,0] = coord_x
-        coord[:num,1] = coord_y
-        coord[:num,2] = coord_z
+        coord[:num,0] = coord_x # x coordinates
+        coord[:num,1] = coord_y # y coordinates
+        coord[:num,2] = coord_z # z coordinates (zeros as SVG is 2D)
        
         lengths = np.zeros(max_num)
         lengths[:num] = np.array(data["lengths"])
         
-        feat = np.zeros((max_num,6))
-        arc = np.arctan(coord_y/(coord_x + 1e-8)) / math.pi
-        lens = np.array(data["lengths"]).clip(0,140) / 140
-        ctype = np.eye(4)[data["commands"]]
-        
-        feat[:num,0] = arc
-        feat[:num,1] = lens
+        # feat refers to feature data(Source: SymPoint paper Pg3, equation 2)
+        feat = np.zeros((max_num,6))  
+        arc = np.arctan(coord_y/(coord_x + 1e-8)) / math.pi # clockwise angle between graphical primitive and positive x axis
+        lens = np.array(data["lengths"]).clip(0,140) / 140 # normalized lengths of SVG's graphical primitives
+        ctype = np.eye(4)[data["commands"]] # one hot encoding of SVG's graphical primitives
+        feat[:num,0] = arc 
+        feat[:num,1] = lens 
         feat[:num,2:] = ctype
         
+        # np.full_like returns an array with the same shape as its first param and populated with the second param as the value
         semanticIds = np.full_like(coord[:,0],35) # bg sem id = 35
         seg = np.array(data["semanticIds"])
         semanticIds[:num] = seg
         semanticIds = semanticIds.astype(np.int64)
         
-        instanceIds = np.full_like(coord[:,0],-1) # stuff id = -1
+        instanceIds = np.full_like(coord[:,0],-1) # stuff/background id = -1
         ins = np.array(data["instanceIds"])
         valid_pos = ins != -1
         ins[valid_pos] += idx*min_points
@@ -231,6 +242,20 @@ class SVGDataset(Dataset):
     def collate_fn(self,batch):
         coord, feat, label,lengths = list(zip(*batch))
         offset, count = [], 0
+        """
+        offset:
+        - Used to keep track of where each sample ends in a batch
+        - Important because SVGs can have different numbers of points
+        - Contains cumulative sum of points across batch
+        
+        Lengths are the lengths of the graphical primitives stored in original pixel units but clipped to a max of 140 pixels, i.e normalised wrt 140 as shown in load()
+        
+        This length information is important because:
+            - It provides scale information that's lost when just using midpoints
+            - Helps distinguish between primitives that might have the same midpoint but different sizes
+            - Gives the model information about the actual geometric extent of each primitive
+
+        """
         for item in coord:
             count += item.shape[0]
             offset.append(count)

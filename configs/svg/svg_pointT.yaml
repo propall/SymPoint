@@ -1,7 +1,7 @@
 model:
-  in_channels: 9
-  semantic_classes: 35
-  #decoder
+  in_channels: 9 # The only config input to Point Transformer(backbone of model) [svgnet/model/pointtransformer.py]
+  semantic_classes: 35 # Used only in svgnet/model/svgmodel.py
+  #decoder (svgnet/model/deconder.py)
   num_decoders: 3
   dropout: 0.0
   pre_norm: False

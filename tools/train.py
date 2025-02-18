@@ -69,8 +69,24 @@ def train(epoch, model, optimizer, scheduler, scaler, train_loader, cfg, logger,
 
         if scheduler is None:
             cosine_lr_after_step(optimizer, cfg.optimizer.lr, epoch - 1, cfg.step_epoch, cfg.epochs)
+        
+        # Forward pass with automatic mixed precision
         with torch.cuda.amp.autocast(enabled=cfg.fp16):
-            _,loss, log_vars = model(batch)
+            forwardpass_output, loss, log_vars = model(batch)
+      
+        print("============================================")  
+        print(f"forwardpass_output: {forwardpass_output}")
+        print("============================================")  
+        # # Extract predictions and ground truth from the outputs
+        # semantic_predictions = forwardpass_output['semantic_scores']  # Assuming 'semantic_scores' contains the model's predictions
+        # semantic_ground_truth = forwardpass_output['semantic_labels']  # Assuming 'semantic_labels' contains the ground truth labels
+        
+        # # Print predictions and ground truth for the first item in the batch
+        # if i % 5 == 0:  # Adjust the frequency as needed
+        #     print(f"Batch Index {i}:")
+        #     print("Predictions:", semantic_predictions[0].cpu().detach().numpy())
+        #     print("Ground Truth:", semantic_ground_truth[0].cpu().detach().numpy())
+
 
         # meter_dict
         for k, v in log_vars.items():
@@ -158,9 +174,6 @@ def validate(epoch, model, optimizer, val_loader, cfg, logger, writer):
         best_metric = sPQ
         checkpoint_save(epoch, model, optimizer, cfg.work_dir, cfg.save_freq, best=True)
         logger.info(f"New best sPQ {best_metric:.3f} at {epoch} epoch" )
-    
-       
-
 
 def main():
     args = get_args()

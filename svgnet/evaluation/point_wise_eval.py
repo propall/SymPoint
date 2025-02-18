@@ -3,6 +3,11 @@ from svgnet.data.svg import SVG_CATEGORIES
 import torch
 import torch.distributed as dist
 
+"""
+This code which implements evaluation metrics for semantic and instance segmentation tasks
+"""
+
+
 class PointWiseEval(object):
     """Class for evaluating point-wise segmentation performance.
     
@@ -18,30 +23,37 @@ class PointWiseEval(object):
         gpu_num (int): Number of GPUs used for distributed evaluation.
     """
     def __init__(self, num_classes=35, ignore_label=35,gpu_num=1) -> None:
+        """
+        - Takes number of classes (default 35), an ignore label, and number of GPUs
+        - Creates a confusion matrix of size (num_classes + 1) × (num_classes + 1) for evaluation
+        - Gets class names from SVG_CATEGORIES (excluding the last one)
+        """
         self.ignore_label = ignore_label
         self._num_classes = num_classes
         self._conf_matrix = np.zeros((self._num_classes + 1, self._num_classes + 1), dtype=np.float32)
-        self._b_conf_matrix = np.zeros(
-            (self._num_classes + 1, self._num_classes + 1), dtype=np.int64
-        )
+        # self._b_conf_matrix = np.zeros(
+        #     (self._num_classes + 1, self._num_classes + 1), dtype=np.int64
+        # ) # Not used in entire repo
         self._class_names = [x["name"] for x in SVG_CATEGORIES[:-1]]
         self.gpu_num = gpu_num
         
     def update(self, pred_sem, gt_sem):
-        """Updates the confusion matrix with predictions and ground truth labels.
+        """
+           - Creates a mask where class 35 isnt present and calculates predictions, groundtruths at those locations in matrix
+           - Update the confusion matrix with predictions and ground truth labels.
         
         Args:
             pred_sem (np.ndarray): Predicted semantic labels.
             gt_sem (np.ndarray): Ground truth semantic labels.
         """
-        pos_inds = gt_sem != self.ignore_label
+        pos_inds = gt_sem != self.ignore_label # Boolean mask which True at places where gt_sem is not ignore_label
         pred = pred_sem[pos_inds]
         gt = gt_sem[pos_inds]
 
         self._conf_matrix += np.bincount(
                 (self._num_classes + 1) * pred.reshape(-1) + gt.reshape(-1),
                 minlength=self._conf_matrix.size,
-            ).reshape(self._conf_matrix.shape)
+            ).reshape(self._conf_matrix.shape) # efficiently count matches and update the confusion matrix
 
         
 
@@ -54,32 +66,33 @@ class PointWiseEval(object):
         Returns:
             tuple: Mean IoU (mIoU), Pixel accuracy (pACC)
         """
-        if self.gpu_num>1:
-            t =  torch.from_numpy(self._conf_matrix).to("cuda")
-            conf_matrix_list = [torch.full_like(t,0) for _ in range(self.gpu_num)]
-            dist.barrier()
-            dist.all_gather(conf_matrix_list,t)
-            self._conf_matrix = torch.full_like(t,0)
+        if self.gpu_num>1: # Check if multiGPU training/evaluation
+            t =  torch.from_numpy(self._conf_matrix).to("cuda") # Convert numpy confusion matrix into a tensor and send it to GPU
+            conf_matrix_list = [torch.full_like(t,0) for _ in range(self.gpu_num)] # Create list of empty tensors, one for each GPU
+            dist.barrier() # Synchronisation point, makes sure all GPUs are ready before gathering data
+            dist.all_gather(conf_matrix_list,t)  # Gathers various local confusion matrices from different GPUs
+            self._conf_matrix = torch.full_like(t,0) # Create a new confusion matrix to compile all local confusion matrices
+            # Accumulates results from all GPUs into a single confusion matrix
             for conf_matrix in conf_matrix_list:
                 self._conf_matrix += conf_matrix
-            self._conf_matrix = self._conf_matrix.cpu().numpy()
+            self._conf_matrix = self._conf_matrix.cpu().numpy() # Moves the final combined confusion matrix back to CPU and convert it to numpy array
         
         # mIoU
-        acc = np.full(self._num_classes, np.nan, dtype=np.float64)
-        iou = np.full(self._num_classes, np.nan, dtype=np.float64)
-        tp = self._conf_matrix.diagonal()[:-1].astype(np.float64)
-        pos_gt = np.sum(self._conf_matrix[:-1, :-1], axis=0).astype(np.float64)
+        acc = np.full(self._num_classes, np.nan, dtype=np.float64) # Accuracy (acc): tp / pos_gt
+        iou = np.full(self._num_classes, np.nan, dtype=np.float64) # IoU: tp / (pos_gt + pos_pred - tp)
+        tp = self._conf_matrix.diagonal()[:-1].astype(np.float64) # True Positives (tp): Diagonal elements of confusion matrix
+        pos_gt = np.sum(self._conf_matrix[:-1, :-1], axis=0).astype(np.float64) # Ground Truth Positives (pos_gt): Sum along columns
         class_weights = pos_gt / (np.sum(pos_gt)+1e-8)
-        pos_pred = np.sum(self._conf_matrix[:-1, :-1], axis=1).astype(np.float64)
+        pos_pred = np.sum(self._conf_matrix[:-1, :-1], axis=1).astype(np.float64) # Predicted Positives (pos_pred): Sum along rows
         acc_valid = pos_gt > 0
         acc[acc_valid] = tp[acc_valid] / (pos_gt[acc_valid]+1e-8)
         union = pos_gt + pos_pred - tp
         iou_valid = np.logical_and(acc_valid, union > 0)
         iou[iou_valid] = tp[iou_valid] / (union[iou_valid]+1e-8)
-        macc = np.sum(acc[acc_valid]) / (np.sum(acc_valid)+1e-8)
-        miou = np.sum(iou[iou_valid]) / (np.sum(iou_valid)+1e-8)
-        fiou = np.sum(iou[iou_valid] * class_weights[iou_valid])
-        pacc = np.sum(tp) / (np.sum(pos_gt)+1e-8)
+        macc = np.sum(acc[acc_valid]) / (np.sum(acc_valid)+1e-8) # Mean Accuracy (macc): Average of valid accuracies
+        miou = np.sum(iou[iou_valid]) / (np.sum(iou_valid)+1e-8) # Mean IoU (miou): Average of valid IoUs
+        fiou = np.sum(iou[iou_valid] * class_weights[iou_valid]) # Frequency weighted IoU (fiou): IoU weighted by class frequency
+        pacc = np.sum(tp) / (np.sum(pos_gt)+1e-8) # Pixel Accuracy (pacc): Total correct pixels / total pixels
 
         miou, fiou, pACC = 100 * miou, 100 * fiou, 100 * pacc
         for i, name in enumerate(self._class_names):

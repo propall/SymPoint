@@ -12,10 +12,28 @@ from .decoder import Decoder
 import numpy as np
 
 class SVGNet(nn.Module):
+    """A neural network model for SVG instance segmentation tasks.
+    
+    This model combines a backbone network (PointTransformer) with a decoder to perform
+    instance segmentation on point cloud or SVG data. It can identify both semantic
+    classes and individual instances within those classes.
+    
+    Args:
+        cfg: Configuration object containing model parameters.
+        criterion (optional): Loss criterion for model training.
+    
+    Attributes:
+        backbone: Point Transformer backbone network for feature extraction.
+        decoder: Decoder network for generating instance predictions.
+        num_classes: Number of semantic classes to predict.
+        test_object_score: Confidence threshold for object detection during inference.
+    """
+    
+    
     def __init__(
         self,cfg,criterion=None):
         super().__init__()
-        self.criterion = criterion
+        self.criterion = criterion # Store loss criterion
 
         # NOTE backbone
         self.backbone = PointT(cfg)
@@ -31,9 +49,23 @@ class SVGNet(nn.Module):
         return self._forward(coords,feats,offsets,semantic_labels,lengths,return_loss=return_loss)
      
     def prepare_targets(self,semantic_labels,bg_ind=-1,bg_sem=35):
+        """Prepares target tensors for training from semantic labels.
         
-        instance_ids = semantic_labels[:,1].cpu().numpy()
+        Converts semantic and instance labels into target format required by the model.
+        
+        Args:
+            semantic_labels: Tensor of shape [N, 2] containing semantic and instance IDs.
+            bg_sem (int, optional): Background semantic class index. Defaults to 35.
+            bg_ind (int, optional): Background instance index. Defaults to -1.
+            
+        Returns:
+            list[dict]: List containing a single dictionary with:
+                - 'labels': Tensor of class labels
+                - 'masks': Binary mask tensor for each instance
+        """
+        
         semantic_ids = semantic_labels[:,0].cpu().numpy()
+        instance_ids = semantic_labels[:,1].cpu().numpy()
         
         keys = []
         for sem_id,ins_id in zip(semantic_ids,
@@ -66,6 +98,7 @@ class SVGNet(nn.Module):
         }]
 
     @cuda_cast
+    # Writing cuda_cast decorator is equivalent to doing cuda_cast(_forward())
     def _forward(
         self,
         coords,
@@ -75,6 +108,27 @@ class SVGNet(nn.Module):
         lengths,
         return_loss=True
     ):
+        """Forward pass of the network and do this in GPU as it is decorated with cuda_cast fn from svgnet/util/utils.py
+        
+        Args:
+            coords: Coordinate tensor for input points.
+            feats: Feature tensor for input points.
+            offsets: Offset tensor for batched inputs.
+            semantic_labels: Ground truth semantic labels.
+            lengths: Lengths of individual examples in the batch.
+            return_loss (bool): Whether to compute and return losses.
+            
+        Returns:
+            tuple: (model_outputs, loss_value, loss_dicts) if return_loss=True
+                  model_outputs only if return_loss=False
+            
+            model_outputs contains:
+                - semantic_scores: Semantic class predictions
+                - semantic_labels: Ground truth semantic labels
+                - instances: List of detected instances
+                - targets: Ground truth targets
+                - lengths: Input lengths
+        """
     
         stage_list={'inputs': {'p_out':coords,"f_out":feats,"offset":offsets},"semantic_labels":semantic_labels[:,0]}
         targets = self.prepare_targets(semantic_labels)
@@ -125,9 +179,17 @@ class SVGNet(nn.Module):
         
         
         return model_outputs,loss_value,loss_dicts
-
     
     def semantic_inference(self, mask_cls, mask_pred):
+        """Performs semantic segmentation inference.
+        
+        Args:
+            mask_cls: Class prediction logits of shape [B, Q, C]
+            mask_pred: Mask prediction logits of shape [B, Q, G]
+            
+        Returns:
+            torch.Tensor: Semantic segmentation predictions of shape [G, C]
+        """
         
         mask_cls = F.softmax(mask_cls, dim=-1)[...,:-1] # Q,C
         mask_pred = mask_pred.sigmoid() # Q,G
@@ -135,6 +197,22 @@ class SVGNet(nn.Module):
         return semseg[0]
 
     def instance_inference(self,mask_cls,mask_pred,overlap_threshold=0.8):
+        """Performs instance segmentation inference.
+        
+        Converts mask and class predictions into distinct instance predictions,
+        handling overlapping instances using a threshold.
+        
+        Args:
+            mask_cls: Class prediction logits
+            mask_pred: Mask prediction logits
+            overlap_threshold (float): Threshold for handling overlapping instances
+            
+        Returns:
+            list[dict]: List of detected instances, each containing:
+                - masks: Binary mask array
+                - labels: Class label
+                - scores: Confidence score
+        """
         
         mask_cls,mask_pred = mask_cls[0],mask_pred[0]
         scores, labels = F.softmax(mask_cls, dim=-1).max(-1)
@@ -177,10 +255,19 @@ class SVGNet(nn.Module):
 
         return results
      
-
-
-    
     def parse_losses(self, losses):
+        """Parses and processes training losses.
+        
+        Combines multiple loss components and handles distributed training scenarios.
+        
+        Args:
+            losses (dict): Dictionary of individual loss components
+            
+        Returns:
+            tuple: (total_loss, loss_dict)
+                - total_loss: Combined loss value
+                - loss_dict: Dictionary of individual loss values
+        """
         loss = sum(v for v in losses.values())
         losses["loss"] = loss
         for loss_name, loss_value in losses.items():

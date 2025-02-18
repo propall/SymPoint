@@ -15,7 +15,7 @@ from svgnet.data import build_dataloader, build_dataset
 from svgnet.evaluation import PointWiseEval,InstanceEval
 from svgnet.model.svgnet import SVGNet as svgnet
 from svgnet.util  import get_root_logger, init_dist, load_checkpoint
-
+from svgnet.data.svg import SVG_CATEGORIES
 
 def get_args():
     parser = argparse.ArgumentParser("svgnet")
@@ -29,7 +29,22 @@ def get_args():
     args = parser.parse_args()
     return args
 
-
+def print_instance_classes(res):
+    # Print ground truth instances
+    print("\nGround Truth:")
+    targets = res["targets"] # This is a dictionary with labels and masks as the keys
+    gt_labels = targets["labels"]  # Ground truth class labels
+    for idx, label in enumerate(gt_labels):
+        class_name = SVG_CATEGORIES[label]["name"]  # Get class name from the categories
+        print(f"Instance {idx}: Class {label} ({class_name})")
+    
+    # Print predicted instances
+    print("\nPredictions:")
+    for idx, instance in enumerate(res["instances"]):
+        pred_class = instance["labels"]  # Predicted class
+        pred_score = instance["scores"]  # Confidence score
+        class_name = SVG_CATEGORIES[pred_class]["name"]
+        print(f"Instance {idx}: Class {pred_class} ({class_name}), Confidence: {pred_score:.2f}")
 
 
 def main():
@@ -70,6 +85,27 @@ def main():
             torch.cuda.empty_cache()
             with torch.cuda.amp.autocast(enabled=cfg.fp16):
                 res = model(batch,return_loss=False)
+                
+                # Print classes for each instance
+                print(f"\nBatch {i}:")
+                print_instance_classes(res)
+                
+            # print("================================")
+            # print(f"All the keys in res dict in test.py: {res.keys()}") # dict_keys(['semantic_scores', 'semantic_labels', 'instances', 'targets', 'lengths'])
+            # print(f"Shape of res[semantic_scores] in test.py: {res['semantic_scores'].shape}") # torch.Size([N, 35])
+            # print(f"Shape of res[semantic_labels] in test.py: {res['semantic_labels'].shape}") # torch.Size([N])
+            # print(f"Shape of res[instances] in test.py: {len(res['instances'])}") # 11
+            # print(f"Shape of res[targets] in test.py: {res['targets'].keys()}") # dict_keys(['labels', 'masks'])
+            # print(f"Shape of res[lengths] in test.py: {res['lengths'].shape}") # torch.Size([N])
+            
+            # # Model returns a dictionary 'res' containing:
+            # # - semantic_scores: class probabilities for each point
+            # # - semantic_labels: ground truth labels
+            # # - instances: list of detected instances
+            # # - targets: ground truth instance information
+            # # - lengths: lengths of primitives
+            
+            # print("================================")
             
             t2 = time.time()
             time_arr.append(t2 - t1)
@@ -92,7 +128,7 @@ def main():
     mean_time = np.array(time_arr).mean()
     logger.info(f"Average run time: {mean_time:.4f}")
 
-    # save output
+    # If visualisation of outputs is false
     if not args.out:
         return
 
