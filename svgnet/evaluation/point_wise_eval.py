@@ -46,16 +46,15 @@ class PointWiseEval(object):
             pred_sem (np.ndarray): Predicted semantic labels.
             gt_sem (np.ndarray): Ground truth semantic labels.
         """
-        pos_inds = gt_sem != self.ignore_label # Boolean mask which True at places where gt_sem is not ignore_label
-        pred = pred_sem[pos_inds]
+        pos_inds = gt_sem != self.ignore_label # Create mask to filter out ignored labels
+        pred = pred_sem[pos_inds] # Get predictions and ground truths only where mask is True
         gt = gt_sem[pos_inds]
 
+        # Update confusion matrix
         self._conf_matrix += np.bincount(
                 (self._num_classes + 1) * pred.reshape(-1) + gt.reshape(-1),
                 minlength=self._conf_matrix.size,
             ).reshape(self._conf_matrix.shape) # efficiently count matches and update the confusion matrix
-
-        
 
     def get_eval(self, logger):
         """Computes and logs evaluation metrics.
@@ -116,15 +115,15 @@ class InstanceEval(object):
         self._num_classes = num_classes
         self._class_names = [x["name"] for x in SVG_CATEGORIES[:-1]]
         self.gpu_num = gpu_num
-        self.min_obj_score = 0.1
-        self.IoU_thres = 0.5
+        self.min_obj_score = 0.1 # Minimum confidence score threshold for considering a detected instance
+        self.IoU_thres = 0.5 # IoU threshold for considering a match between predicted and ground truth instance
 
         self.tp_classes = np.zeros(num_classes)
         self.tp_classes_values = np.zeros(num_classes)
         self.fp_classes = np.zeros(num_classes)
         self.fn_classes = np.zeros(num_classes)
-        self.thing_class = [i for i in range(30)]
-        self.stuff_class = [30,31,32,33,34]
+        self.thing_class = [i for i in range(30)] # Classes for thing classes (countable objects)
+        self.stuff_class = [30,31,32,33,34] # Classes for stuff classes (uncountable objects)
 
     def update(self, instances, target, lengths):
         """Updates evaluation metrics based on detected instances and ground truth targets.
@@ -132,33 +131,41 @@ class InstanceEval(object):
         Args:
             instances (list): List of detected instances.
             target (dict): Dictionary containing ground truth labels and masks.
-            lengths (torch.Tensor): Length of each detected object instance.
+            lengths (torch.Tensor): lengths of primitives/points in the input.
         """
-        lengths = np.round( np.log(1 + lengths.cpu().numpy()) , 3)
+        lengths = np.round( np.log(1 + lengths.cpu().numpy()) , 3) # The lengths are log-transformed before being used in IoU calculations
         tgt_labels = target["labels"].cpu().numpy().tolist()
         tgt_masks = target["masks"].transpose(0,1).cpu().numpy()
+        
+        # For each ground truth instance
         for tgt_label, tgt_mask in zip(tgt_labels, tgt_masks):
             if tgt_label==self.ignore_label: continue
 
             flag = False
+            # Compare with each predicted instance
             for instance in instances:
                 src_label = instance["labels"]
-                src_score = instance["scores"]
+                src_score = instance["scores"] # confidence score of the detection
                 if src_label==self.ignore_label: continue
                 if src_score< self.min_obj_score: continue
                 src_mask = instance["masks"]
                 
+                # Calculate IoU between prediction and ground truth
                 interArea = sum(lengths[np.logical_and(src_mask,tgt_mask)])
                 unionArea = sum(lengths[np.logical_or(src_mask,tgt_mask)])
                 iou = interArea / (unionArea + 1e-6)
+                # If IoU above threshold, update metrics
                 if iou>=self.IoU_thres:
                     flag = True
-                    if tgt_label==src_label:
+                    if tgt_label==src_label: # Correct class prediction
                         self.tp_classes[tgt_label] += 1
                         self.tp_classes_values[tgt_label] += iou
-                    else:
+                    else: # Wrong class prediction
                         self.fp_classes[src_label] += 1
-            if not flag: self.fn_classes[tgt_label] += 1
+            
+            # If no match found, count as false negative
+            if not flag: 
+                self.fn_classes[tgt_label] += 1
     
     def get_eval(self, logger):
         """Computes and logs instance segmentation evaluation metrics.
@@ -168,6 +175,10 @@ class InstanceEval(object):
         
         Returns:
             tuple: Segmentation PQ, RQ, and SQ metrics.
+        
+        PQ (Panoptic Quality): PQ combines both recognition and segmentation quality
+        RQ (Recognition Quality): RQ measures how well the model recognizes and detects instances
+        SQ (Segmentation Quality): SQ measures how accurately the detected instances match the ground truth shapes
         """
         if self.gpu_num>1:
             _tensor = np.stack([self.tp_classes,

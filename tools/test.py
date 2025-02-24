@@ -10,7 +10,7 @@ import multiprocessing as mp
 import os
 import os.path as osp
 import time
-from functools import partial
+
 from svgnet.data import build_dataloader, build_dataset
 from svgnet.evaluation import PointWiseEval,InstanceEval
 from svgnet.model.svgnet import SVGNet as svgnet

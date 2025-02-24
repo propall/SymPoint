@@ -29,7 +29,7 @@ python setup.py install
 
 # download dataset
 python download_data.py
-# 6965 train images, 3827 test images, 810 val images (use ```ls -l | wc -l``` to count no of files in directory location from terminal)
+# 6965 train images, 3827 test images, 810 val images (use ```ls -1 | wc -l``` to count no of files in directory location from terminal)
 
 # preprocess (convert train, val, testsets to json format data for training and testing.)
 python parse_svg.py --split train --data_dir ./dataset/train/train/svg_gt/
@@ -44,6 +44,7 @@ bash tools/test_dist.sh
 # Use ```bash tools/test_dist.sh &> output.txt``` to overwrite the terminal to output.txt file instead
 ```
 
+#### Note: Please note that inference_dist.sh and inference.py file are altered by adding "--" to force single gpu execution when the file is executed without giving the arguments in the bash terminal(original code doesnt have -- for checkpoint and config params making them mandatory to be given) and subsequently added the arguments in the shell script. This method along with defining the Python path programatically allows error free switching between single and multigpu inferencing. 
 
 
 ## 🔧Installation & Dataset
