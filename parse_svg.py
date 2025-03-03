@@ -1,3 +1,14 @@
+"""
+SVG Parser
+
+This script parses SVG files and converts them to JSON format, extracting information about
+shapes, their attributes, and relationships.
+
+Usage:
+    python parse_svg.py --split test --data_dir ./path/to/svg/files/
+Example:
+    python parse_svg.py --split dwginputs --data_dir ./dataset/dwginputs/test/svg_gt
+"""
 
 import math,re
 import os,glob,json
@@ -7,23 +18,28 @@ from collections import defaultdict
 import numpy as np
 #from sklearn.metrics.pairwise import euclidean_distances
 
-LABEL_NUM = 35
-COMMANDS = ['Line', 'Arc','circle', 'ellipse']
+# Constants
+LABEL_NUM = 35 # Number of semantic labels
+COMMANDS = ['Line', 'Arc','circle', 'ellipse'] # Supported SVG commands/graphical primitives
 import mmcv, argparse
 
 def parse_args():
-    '''
-    Arguments
-    '''
     parser = argparse.ArgumentParser(description='')
-    parser.add_argument('--split', type=str, default="test",
-                        help='the split of dataset')
-    parser.add_argument('--data_dir', type=str, default="./dataset/test/test/svg_gt",
-                        help='save the downloaded data')
+    parser.add_argument('--split', type=str, default="test", help='the split of dataset')
+    parser.add_argument('--data_dir', type=str, default="./dataset/bnbtest/test/svg_gt", help='save the downloaded data')
     args = parser.parse_args()
     return args
 
 def parse_svg(svg_file):
+    """
+    Parse an SVG file and extract geometric information.
+    Args:
+        svg_file (str): Path to the SVG file    
+    Returns:
+        dict: Dictionary containing parsed SVG data    
+    Raises:
+        RuntimeError: If path parsing fails
+    """
     tree = ET.parse(svg_file) # Load the SVG as an XML tree
     root = tree.getroot()     # Get the root <svg> element
     ns = root.tag[:-3]        # Extract XML namespace
@@ -40,10 +56,12 @@ def parse_svg(svg_file):
     layerIds = []
     widths = [] # Stores stroke width
     inst_infos = defaultdict(list) # A dictionary where keys are tuples of (instanceId, semanticId) while values are  lists that store control points
+    
+    # Process each group
     id = 0
     for g in root.iter(ns + 'g'):
         id +=1
-        # path
+        # Process paths
         for path in g.iter(ns + 'path'):
             try:
                 path_repre = parse_path(path.attrib['d'])
@@ -59,9 +77,23 @@ def parse_svg(svg_file):
             instanceId = int(path.attrib['instanceId']) if 'instanceId' in path.attrib else -1
             semanticIds.append(semanticId)
             instanceIds.append(instanceId)
-            rgb = list(map(int,re.findall(r'\d+',path.attrib['stroke'])))
+            # rgb = list(map(int,re.findall(r'\d+',path.attrib['stroke'])))
+            # strokes.append(rgb)
+            # widths.extend([float(path.attrib["stroke-width"])])
+    
+            # Set default color to black if stroke attribute is missing
+            try:
+                rgb = list(map(int, re.findall(r'\d+', path.attrib['stroke'])))
+                if not rgb:  # If regex didn't find any numbers
+                    rgb = [142, 0, 0]  # Default to black
+            except KeyError:
+                rgb = [142, 0, 0]  # Default to black if stroke attribute is missing
             strokes.append(rgb)
-            widths.extend([float(path.attrib["stroke-width"])])
+                      
+            # Use default of 0.1 if stroke-width is not present
+            stroke_width = path.attrib.get("stroke-width", "0.1")
+            widths.extend([float(stroke_width)])
+            
             inds = [0, 1/3, 2/3, 1.0]
             arg = []
             for ind in inds:
@@ -70,6 +102,8 @@ def parse_svg(svg_file):
             args.append(arg)
             inst_infos[(instanceId,semanticId)].extend(arg)
             
+        print(f"{id} processed path.................")
+        
         
         # circle
         for circle in g.iter(ns + 'circle'):
@@ -85,9 +119,22 @@ def parse_svg(svg_file):
             instanceIds.append(instanceId)
             commands.append(COMMANDS.index("circle"))
             layerIds.append(id)
-            rgb = list(map(int,re.findall(r'\d+',circle.attrib['stroke'])))
-            strokes.append(rgb)
-            widths.extend([float(circle.attrib["stroke-width"])])
+            # rgb = list(map(int,re.findall(r'\d+',circle.attrib['stroke'])))
+            # strokes.append(rgb)
+            # widths.extend([float(circle.attrib["stroke-width"])])
+            
+            # Set default color to black if stroke attribute is missing
+            try:
+                rgb = list(map(int, re.findall(r'\d+', circle.attrib['stroke'])))
+                if not rgb:  # If regex didn't find any numbers
+                    rgb = [142, 0, 0]  # Default to black
+            except KeyError:
+                rgb = [142, 0, 0]  # Default to black if stroke attribute is missing
+            strokes.append(rgb)            
+            # Use default of 0.1 if stroke-width is not present
+            stroke_width = circle.attrib.get("stroke-width", "0.1")
+            widths.extend([float(stroke_width)])
+            
             thetas = [0,math.pi/2, math.pi, 3 * math.pi/2,]
             arg = []
             for theta in thetas:
@@ -95,6 +142,8 @@ def parse_svg(svg_file):
                 arg.extend([x,y])
             args.append(arg)
             inst_infos[(instanceId,semanticId)].extend(arg)
+        
+        print(f"{id} processed circle.................")
                
         # ellipse
         for ellipse in g.iter(ns + 'ellipse'):
@@ -115,9 +164,22 @@ def parse_svg(svg_file):
             semanticIds.append(semanticId)
             instanceIds.append(instanceId)
             layerIds.append(id)
-            rgb = list(map(int,re.findall(r'\d+',ellipse.attrib['stroke'])))
+            # rgb = list(map(int,re.findall(r'\d+',ellipse.attrib['stroke'])))
+            # strokes.append(rgb)
+            # widths.extend([float(ellipse.attrib["stroke-width"])])
+            
+            # Set default color to black if stroke attribute is missing
+            try:
+                rgb = list(map(int, re.findall(r'\d+', ellipse.attrib['stroke'])))
+                if not rgb:  # If regex didn't find any numbers
+                    rgb = [142, 0, 0]  # Default to black
+            except KeyError:
+                rgb = [142, 0, 0]  # Default to black if stroke attribute is missing
             strokes.append(rgb)
-            widths.extend([float(ellipse.attrib["stroke-width"])])
+            # Use default of 0.1 if stroke-width is not present
+            stroke_width = ellipse.attrib.get("stroke-width", "0.1")
+            widths.extend([float(stroke_width)])
+            
             thetas = [0,math.pi/2, math.pi, 3 * math.pi/2,]
             arg = []
             for theta in thetas:
@@ -126,7 +188,7 @@ def parse_svg(svg_file):
             args.append(arg)
             inst_infos[(instanceId,semanticId)].extend(arg)
             
-        
+        print(f"{id} processed ellipse.................")
             
     assert len(args) == len(lengths) ,'error'
     assert len(semanticIds) ==  len(instanceIds), 'error'
@@ -141,7 +203,8 @@ def parse_svg(svg_file):
         obj_boxes.append([x1,y1,x2,y2,sem_id])
     
     coords = np.array(args).reshape(-1,4,2)
-   
+    
+    print("computed coords, doing json_dicts")
     json_dicts = {
         "commands":commands,
         "args":args,
@@ -156,13 +219,14 @@ def parse_svg(svg_file):
         "layerIds":layerIds,
         "widths": widths
     }
+    
     return json_dicts
 
 def save_json(json_dicts,out_json):
     json.dump(json_dicts, open(out_json, 'w'), indent=4)
     
 def process(data):
-    
+    print("Invoked process fn that saves json............")
     svg_file, save_dir = data
     json_dicts = parse_svg(svg_file)
     filename = svg_file.split("/")[-1].replace(".svg",".json")

@@ -4,6 +4,8 @@ saved images are stored at ./visualization_outputs/
 
 Usage: python tools/inference.py &> output.txt      (single GPU inference)
        bash tools/inference_dist.sh &> output.txt   (multi GPU inference)
+       
+****Note: Please note that line 269 has a dataset path input in addition to config file
 """
 
 import os
@@ -264,7 +266,7 @@ def main():
                 json_file = val_set.data_list[i]
             
             svg_file = os.path.join(
-                "./dataset/verysmalltestset/test/svg_gt",
+                "./dataset/dwginputs/test/svg_gt",
                 os.path.basename(json_file).replace("json", "svg")
             )
             

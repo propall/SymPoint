@@ -42,9 +42,17 @@ bash tools/train_dist.sh # batchsize,workers = (8,4) use abt 10-12GB per GPU acr
 bash tools/test_dist.sh
 
 # Use ```bash tools/test_dist.sh &> output.txt``` to overwrite the terminal to output.txt file instead
+
+# python parse_svg.py --split test --data_dir ./dataset/bnbtest/test/svg_gt/
+
+
+
 ```
 
 #### Note: Please note that inference_dist.sh and inference.py file are altered by adding "--" to force single gpu execution when the file is executed without giving the arguments in the bash terminal(original code doesnt have -- for checkpoint and config params making them mandatory to be given) and subsequently added the arguments in the shell script. This method along with defining the Python path programatically allows error free switching between single and multigpu inferencing. 
+
+## Workflow by Manjunadh
+DWG file -> AutoCAD -> DXF file -> Inkscape -> SaveAs Optimised SVG -> Place inside datasets/bnbtest/test/svg_gt -> Run parse_svg.py -> Json is generated -> Run inference.py/inference_dist.sh -> Results(Semantic and Instance Ids added to SVG and stored in visualization_outputs/) 
 
 
 ## 🔧Installation & Dataset
